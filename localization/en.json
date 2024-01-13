@@ -1,0 +1,14 @@
+{
+  "lang_name" : "English",
+  "please_wait": "Processing, please wait.",
+  "enter_touch_mode": "Switching to touch mode.",
+  "enter_separate_mode": "Switching to separate mode.",
+  "now_readout_mode": "Now at readout mode.",
+  "no_object_selected": "No object has been selected",
+  "return_2_readout_mode": "Switching back to readout mode.",
+  "cursor_pick_empty": "No object at cursor position, switching back to readout mode.",
+  "separate_content_f": "Separate: number {nth} of {num_all}, detail: {detail}.",
+  "invoke_fail": "Invoke GPT Failed, please contact staff.",
+  "desc_surround_f": "Target description: {target_s} ; Surrounding: {surrounding_s}",
+  "surround_f": "Surrounding: {surrounding_s}"
+}
