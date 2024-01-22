@@ -6,6 +6,6 @@
   "return_2_readout_mode": "読み上げモードに戻ります。",
   "now_readout_mode": "今読み上げモードです",
   "cursor_pick_empty": "カーサ位置で物体ありません、読み上げモードに戻ります",
-  "separate_content_f": "切り替える、{num_all}個のうちの{nth}個目。説明：{details}"
+  "separate_content_f": "切り替える、{num_all}個のうちの{nth}個目。"
 
 }

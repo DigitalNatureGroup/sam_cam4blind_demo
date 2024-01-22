@@ -60,7 +60,7 @@ thickness_outer = 3
 JOYSTICK_DEADZONE = 0.1
 JOYSTICK_SPEED = 3
 
-MODE_READOUT = 0
+MODE_FULLVIEW = 0
 MODE_SEPARATE = 1
 MODE_TOUCH = 2
 
@@ -79,8 +79,8 @@ def quick_speak(s: str):
         pygame.mixer.music.unload()
 
 
-def get_description_GPT(focus_annot_index: int, len_annots_current: int, class_name: str,
-                        class_proposals: list):  # , relative:Tuple[int, int]):
+def get_list_description_GPT(focus_annot_index: int, len_annots_current: int, class_name: str,
+                             class_proposals: list):  # , relative:Tuple[int, int]):
     descri_dict = {
         'target': [
             {
@@ -91,10 +91,17 @@ def get_description_GPT(focus_annot_index: int, len_annots_current: int, class_n
         ],
         'surround': []
     }
-    quick_speak(L.get_str("please_wait"))
-    return L.get_str("separate_content_f").format(nth=focus_annot_index,
+    # quick_speak(L.get_str("please_wait"))
+    return L.get_str("separate_content_f").format(nth=focus_annot_index +1 ,
                                                   num_all=len_annots_current,
-                                                  detail=openup_description(get_description(descri_dict, supportedLocals_fullname[LANG.value])))
+                                                  )
+
+
+def get_obj_count_str(len_annots_current: int):  # , relative:Tuple[int, int]):
+
+    return L.get_str("separate_mode_count_f").format(
+                                                  num_all=len_annots_current,
+                                                  )
 
 
 def openup_description(desr: str) -> str:
@@ -207,12 +214,34 @@ def draw_fullimg_mask(full_img: np.ndarray, crop_box, mask, color=(0, 0, 255)):
     new_img = cv.addWeighted(full_img, 0.8, masked_img.astype(np.uint8), 0.2, 0)
 
     return new_img, full_mask
+def draw_fullimg_mask_edge(full_img:np.ndarray, crop_box, mask, color = (0, 0, 255), mask_ratio : float = 0.2):
+    y_size, x_size, channel = full_img.shape
+    assert channel == 3
+    assert 0.0 <= mask_ratio <= 1.0
+    x, y, w, h = crop_box
+    # mask is y 1st, x 2nd
+    full_mask = np.zeros( [y_size,x_size],dtype=np.uint8 )
+    blank_img = np.zeros_like(full_img)
+
+    full_mask[y:y + h, x:x + w] = mask
+
+    masked_img = np.where(full_mask[...,None], np.asarray((255,255,255)), blank_img)
+    masked_img_bi = cv.cvtColor(masked_img.astype(np.float32), cv.COLOR_BGR2GRAY)
+    edge_im = cv.Canny(masked_img_bi.astype(np.uint8),50,300)
+
+
+    # use `addWeighted` to blend the two images
+    # the object will be tinted toward `color`
+    #new_img = cv.addWeighted(full_img, 1.0-mask_ratio, edge_im.astype(np.uint8),mask_ratio, 0)
+
+
+    return edge_im
 
 def draw_fullimg_mask_edge_4gpt(full_img:np.ndarray,
                                 crop_box,
                                 mask,
                                 mask_color_bgr = (0, 0, 255),
-                                mask_ratio : float = 0.2,
+                                mask_ratio : float = 0.1,
                                 edge_color_bgr = (255, 0, 0)):
     y_size, x_size, channel = full_img.shape
     assert channel == 3
@@ -234,6 +263,11 @@ def draw_fullimg_mask_edge_4gpt(full_img:np.ndarray,
     # the object will be tinted toward `color`
     new_img = cv.addWeighted(full_img, 1.0 - mask_ratio, color_mask, mask_ratio, 0)
     new_img[edge_im != 0] = np.asarray(edge_color_bgr)
+
+    now = datetime.datetime.now()
+    dt = now.strftime('%m%d-%H%M-%S-%f')[:-3]
+    cv.imwrite(f"image_4_gpt4v/{dt}.jpg", new_img)
+    print(f"file created{dt}")
 
     return new_img
 
@@ -261,7 +295,7 @@ class intereaction_GUI:
         self.clock = pygame.time.Clock()
         self.annots_current = None
         self.focus_annot_index = None
-        self.mode = MODE_READOUT
+        self.mode = MODE_FULLVIEW
 
     def process_pyg_event_readout(self):
         now = datetime.datetime.now()
@@ -276,7 +310,7 @@ class intereaction_GUI:
                     self.annots_current = self.read_cursor()
                     if len(self.annots_current) == 0:
                         quick_speak(L.get_str("cursor_pick_empty"))
-                        self.mode = MODE_READOUT
+                        self.mode = MODE_FULLVIEW
                         self.focus_annot_index = None
                         pygame.event.clear()
                         make_end_sound()
@@ -312,7 +346,7 @@ class intereaction_GUI:
                     quick_speak(L.get_str("return_2_readout_mode"))
                     self.annots_current = None
                     self.focus_annot_index = None
-                    self.mode = MODE_READOUT
+                    self.mode = MODE_FULLVIEW
                     pygame.event.clear()
                     make_end_sound()
                     break
@@ -326,6 +360,26 @@ class intereaction_GUI:
                 elif event.button == 1:  # <B>
                     if not self.annots_current:
                         quick_speak(L.get_str("no_object_selected"))
+                        break
+                    else:
+                        self.focus_annot_index =  (self.focus_annot_index + 1) % len(self.annots_current)
+
+                        composited_descr_str = get_list_description_GPT(focus_annot_index=self.focus_annot_index,
+                                                                        len_annots_current=len(self.annots_current),
+                                                                        class_name=
+                                                                   self.annots_current[self.focus_annot_index][
+                                                                       'class_name'],
+                                                                        class_proposals=
+                                                                   self.annots_current[self.focus_annot_index][
+                                                                       'class_proposals'])
+
+                        print(f"STR:{composited_descr_str}")
+                        quick_speak(composited_descr_str)
+                        make_end_sound()
+                    break
+                elif event.button == 0:  # <A>
+                    if not self.annots_current:
+                        quick_speak(L.get_str("no_object_selected"))
                         make_end_sound()
                         break
                     else:
@@ -333,7 +387,7 @@ class intereaction_GUI:
                         quick_speak(L.get_str("please_wait"))
                         annot = self.annots_current[self.focus_annot_index]
                         img_with_mask_edge = draw_fullimg_mask_edge_4gpt(self.raw_image,
-                                                                         annot['crop_box'], 
+                                                                         annot['crop_box'],
                                                                          annot['segmentation'],
                                                                          )
                         composited_descr_str =  get_GPT4v_description_obj(img_with_mask_edge,supportedLocals_fullname[LANG.value])
@@ -342,23 +396,7 @@ class intereaction_GUI:
 
                         make_end_sound()
                     break
-                elif event.button == 0:  # <A>
-                    if not self.annots_current:
-                        quick_speak(L.get_str("no_object_selected"))
-                        break
-                    else:
-                        composited_descr_str = get_description_GPT(focus_annot_index=self.focus_annot_index,
-                                                                   len_annots_current=len(self.annots_current),
-                                                                   class_name=
-                                                                   self.annots_current[self.focus_annot_index][
-                                                                       'class_name'],
-                                                                   class_proposals=
-                                                                   self.annots_current[self.focus_annot_index][
-                                                                       'class_proposals'])
-                        print(f"STR:{composited_descr_str}")
-                        quick_speak(composited_descr_str)
-                        make_end_sound()
-                    break
+
 
             elif event.type == pygL.KEYDOWN and event.key == pygL.K_ESCAPE:
                 print("\nEsc pressed.")
@@ -431,15 +469,26 @@ class intereaction_GUI:
         cr_masks = self.get_corresponding_masks(x, y)
         if cr_masks:
             print(f"pos : {x} , {y}")
+        obj_count_str = get_obj_count_str(
+                                          len_annots_current=len(cr_masks),
+                                          )
+        print(f"STR:{obj_count_str}")
+
+        quick_speak(obj_count_str)
+        # quick_speak( f"number {i+1} of {len(cr_masks)} : type {annot['class_name']} , description: " + ','.join( annot['class_proposals'] ) )
+        make_partial_end_sound()
+        """
         for i, annot in enumerate(cr_masks):
-            composited_descr_str = get_description_GPT(focus_annot_index=i + 1,
-                                                       len_annots_current=len(cr_masks),
-                                                       class_name=annot['class_name'],
-                                                       class_proposals=annot['class_proposals'])
-            print(f"STR:{composited_descr_str}")
-            quick_speak(composited_descr_str)
+            obj_count_str = get_obj_count_str(focus_annot_index=i,
+                                                            len_annots_current=len(cr_masks),
+                                                            class_name=annot['class_name'],
+                                                            class_proposals=annot['class_proposals'])
+            print(f"STR:{obj_count_str}")
+
+            quick_speak(obj_count_str)
             # quick_speak( f"number {i+1} of {len(cr_masks)} : type {annot['class_name']} , description: " + ','.join( annot['class_proposals'] ) )
             make_partial_end_sound()
+        """
         return cr_masks
 
     def get_drawn_img(self):
@@ -456,13 +505,20 @@ class intereaction_GUI:
 
     def exit_touch(self):
         assert self.mode == MODE_TOUCH
-
+        self.mode = MODE_SEPARATE
         # pygame.mixer.music.unload()
 
     def touch_mode_resource_init(self):
         assert not self.mode == MODE_TOUCH
         self.mode = MODE_TOUCH
         pygame.mixer.music.load(touch_playback_sound_path)
+
+    def get_edgeed_drawn_img(self, annot):
+        image = self.raw_image.copy()
+        #print(annot)
+        bi_image = draw_fullimg_mask_edge(image, annot['crop_box'], annot['segmentation'],)
+        bi_image = cv.cvtColor(bi_image, cv.COLOR_GRAY2BGR)
+        return bi_image
 
     def show(self):
         done = False
@@ -472,7 +528,7 @@ class intereaction_GUI:
         pygame.display.update()
 
         while not done:
-            if self.mode == MODE_READOUT:
+            if self.mode == MODE_FULLVIEW:
 
                 self.process_pyg_event_readout()
             elif self.mode == MODE_TOUCH:
@@ -483,8 +539,16 @@ class intereaction_GUI:
             else:
                 pass
             self.screen.fill((0, 0, 0))
-
+            """
             if not self.annots_current:
+                new_img = self.get_drawn_img()
+            else:
+                new_img = self.get_masked_drawn_img(self.annots_current[self.focus_annot_index])
+            """
+            if self.mode == MODE_TOUCH:
+                #new_img = self.get_bi_masked_drawn_img(self.annots_current[self.focus_annot_index])
+                new_img = self.get_edgeed_drawn_img(self.annots_current[self.focus_annot_index])
+            elif not self.annots_current:
                 new_img = self.get_drawn_img()
             else:
                 new_img = self.get_masked_drawn_img(self.annots_current[self.focus_annot_index])
